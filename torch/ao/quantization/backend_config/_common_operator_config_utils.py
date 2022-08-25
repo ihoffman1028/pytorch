@@ -347,24 +347,19 @@ def _get_default_op_configs(dtype_configs: List[DTypeConfig]) -> List[BackendPat
         torch.nn.ELU,
         torch.nn.LeakyReLU,
         torch.nn.Hardswish,
-        torch.nn.InstanceNorm1d,
-        torch.nn.InstanceNorm2d,
-        torch.nn.InstanceNorm3d,
-        torch.nn.LayerNorm,
         torch.nn.Dropout,
         torch.nn.PReLU,
         torch.nn.functional.elu,
         torch.nn.functional.hardswish,
-        torch.nn.functional.instance_norm,
         torch.nn.functional.leaky_relu,
         torch.nn.functional.dropout,
-        torch.nn.functional.layer_norm
     ]
     for op in default_ops:
         configs.append(
             BackendPatternConfig(op)
                 .set_observation_type(ObservationType.OUTPUT_USE_DIFFERENT_OBSERVER_AS_INPUT)  # noqa: E131
                 .set_dtype_configs(dtype_configs))
+
     return configs
 
 def _get_fixed_qparams_op_configs(dtype_configs: List[DTypeConfig]) -> List[BackendPatternConfig]:
