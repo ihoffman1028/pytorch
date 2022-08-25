@@ -60,8 +60,12 @@ jobs:
           path: benchmark
           lfs: false
           ref: ${{ env.TORCHBENCH_BRANCH }}
+      - name: GPU Info
+        run: |
+          nvidia-smi
       - name: Run TorchBench
         run: |
+          set -x
           pushd "${HOME}"/pytorch
           PR_MERGE_BASE=$(git merge-base "$PR_BASE_SHA" "$PR_HEAD_SHA")
           popd
@@ -70,7 +74,8 @@ jobs:
           # shellcheck disable=SC1091
           . "${HOME}"/anaconda3/etc/profile.d/conda.sh
           conda activate pr-ci
-          python3 pytorch/.github/scripts/run_torchbench.py \
+          # python3 -c "import torch; torch.rand((4, 4), device='cuda')"
+          CUDA_LAUNCH_BLOCKING=1 python3 pytorch/.github/scripts/run_torchbench.py \
                   --pr-body "$PR_BODY_FILE" \
                   run \
                   --pytorch-path "${HOME}"/pytorch \
