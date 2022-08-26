@@ -42,6 +42,7 @@ from torchgen.api.types import (
     Binding,
     DispatcherSignature,
     intArrayRefT,
+    iOptTensorListRefT,
     iTensorListRefT,
     ListCType,
     MutRefCType,
@@ -428,12 +429,22 @@ for (size_t i=0; i<${tensorlist_name}.size() && !at::impl::dispatch_mode_enabled
 """
 )
 
+# See [Note: IOptTensorListRef]
+# Materialize the tensor list once before using.
+MATERIALIZE_OPTIONALTENSORLIST = CodeTemplate(
+    """\
+auto ${tensorlist_name}_materialized = ${tensorlist_name}.materialize();
+"""
+)
+
 SAVE_OPTIONALTENSORLIST_STORAGE = CodeTemplate(
     """\
 std::vector<c10::optional<Storage>> ${tensorlist_name}_storage_saved(${tensorlist_name}.size());
-for (const c10::optional<Tensor>& tensor : ${tensorlist_name})
+for (size_t i=0; i<${tensorlist_name}.size(); i++) {
+  auto tensor = ${tensorlist_name}[i];
   ${tensorlist_name}_storage_saved.push_back(
     tensor.has_value() && tensor->has_storage() ? c10::optional<Storage>(tensor->storage()) : c10::nullopt);
+}
 """
 )
 
@@ -442,7 +453,7 @@ ENFORCE_SAME_OPTIONALTENSORLIST_STORAGE = CodeTemplate(
 for (size_t i=0; i<${tensorlist_name}.size() && !at::impl::dispatch_mode_enabled(); i++) {
   if (${tensorlist_name}_storage_saved[i].has_value() && !at::impl::tensorlist_has_dispatch(${tensorlist_name}))
     AT_ASSERT(${tensorlist_name}_storage_saved[i].value().is_alias_of(
-        static_cast<c10::optional<Tensor>>(${tensorlist_name}[i])->storage()));
+        ${tensorlist_name}[i]->storage()));
 }
 """
 )
@@ -497,7 +508,7 @@ SAVE_OPTIONALTENSORLIST_IMPL = CodeTemplate(
     """\
 std::vector<c10::intrusive_ptr<TensorImpl>> ${tensorlist_name}_impl_saved(${tensorlist_name}.size());
 for (size_t i=0; i<${tensorlist_name}.size(); i++) {
-  c10::optional<Tensor> t = ${tensorlist_name}[i];
+  auto t = ${tensorlist_name}[i];
   if (t.has_value() && t->defined()) ${tensorlist_name}_impl_saved[i] = t->getIntrusivePtr();
 }
 """
@@ -507,7 +518,7 @@ ENFORCE_SAME_OPTIONALTENSORLIST_IMPL = CodeTemplate(
     """\
 for (size_t i=0; i<${tensorlist_name}.size() && !at::impl::dispatch_mode_enabled(); i++) {
   if (${tensorlist_name}_impl_saved[i])
-    AT_ASSERT(${tensorlist_name}_impl_saved[i] == static_cast<c10::optional<Tensor>>(${tensorlist_name}[i])->getIntrusivePtr());
+    AT_ASSERT(${tensorlist_name}_impl_saved[i] == ${tensorlist_name}[i]->getIntrusivePtr());
 }
 """
 )
@@ -1165,6 +1176,7 @@ def emit_body(
                 type == BaseCType(tensorListT)
                 or type == ListCType(OptionalCType(BaseCType(tensorT)))
                 or type == BaseCType(iTensorListRefT)
+                or type == BaseCType(iOptTensorListRefT)
             ):
                 expr = f"make_saved_variable_list({name})"
                 name += "_"
@@ -1243,6 +1255,15 @@ def emit_body(
         for unpacked_binding in unpacked_bindings:
             arg = unpacked_binding.name
             noref_cpp_type = unpacked_binding.nctype.type.remove_const_ref()
+
+            if noref_cpp_type == BaseCType(iOptTensorListRefT):
+                # IOptTensorListRef falls through the unpacking, since it is nullable.
+                # Therefore, we need to materialize them before actually traversing them.
+                stmts_before_call += [
+                    MATERIALIZE_OPTIONALTENSORLIST.substitute(tensorlist_name=arg)
+                ]
+                arg = f"{arg}_materialized"
+
             if noref_cpp_type == BaseCType(tensorListT) or noref_cpp_type == BaseCType(
                 iTensorListRefT
             ):
@@ -1254,7 +1275,9 @@ def emit_body(
                     ENFORCE_SAME_TENSORLIST_STORAGE.substitute(tensorlist_name=arg),
                     ENFORCE_SAME_TENSORLIST_IMPL.substitute(tensorlist_name=arg),
                 ]
-            elif noref_cpp_type == ListCType(OptionalCType(BaseCType(tensorT))):
+            elif noref_cpp_type == ListCType(
+                OptionalCType(BaseCType(tensorT))
+            ) or noref_cpp_type == BaseCType(iOptTensorListRefT):
                 stmts_before_call += [
                     SAVE_OPTIONALTENSORLIST_STORAGE.substitute(tensorlist_name=arg),
                     SAVE_OPTIONALTENSORLIST_IMPL.substitute(tensorlist_name=arg),
