@@ -1616,6 +1616,7 @@ class TestRefsOpsInfo(TestCase):
         '_refs.movedim',
         '_refs.narrow',
         '_refs.nn.functional.l1_loss',
+        '_refs.nn.functional.poisson_nll_loss',
         '_refs.positive',
         '_refs.ravel',
         '_refs.reshape',
