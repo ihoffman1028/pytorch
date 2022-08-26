@@ -57,7 +57,7 @@ inline void check_inplace(const at::Tensor& tensor, bool requires_grad) {
   }
 }
 
-inline void check_inplace(const at::TensorList tensors, bool requires_grad) {
+inline void check_inplace(at::ITensorListRef tensors, bool requires_grad) {
   for (const auto& tensor : tensors) {
     check_inplace(tensor, requires_grad);
   }
@@ -82,7 +82,7 @@ inline void throw_error_for_complex_autograd(
 }
 
 inline void throw_error_for_complex_autograd(
-    const at::TensorList& tensorlist,
+    at::ITensorListRef tensorlist,
     const char* name) {
   for (const auto& tensor : tensorlist) {
     throw_error_for_complex_autograd(tensor, name);
@@ -377,7 +377,7 @@ inline void check_no_requires_grad(
 }
 
 inline void check_no_requires_grad(
-    at::TensorList tensors,
+    at::ITensorListRef tensors,
     const char* name,
     const char* fn_name = "") {
   // GradMode check is expensive, so check it only once for TensorLists
@@ -406,7 +406,7 @@ inline void check_no_requires_grad(
 
 // Assumed that saved tensor lists are never inplace outputs
 inline std::vector<SavedVariable> make_saved_variable_list(
-    at::TensorList tensors) {
+    at::ITensorListRef tensors) {
   return fmap(tensors, [](const at::Tensor& tensor) -> SavedVariable {
     return SavedVariable{tensor, false /* is output */};
   });
@@ -425,19 +425,22 @@ inline std::vector<SavedVariable> make_saved_variable_list(
       });
 }
 
-inline std::vector<std::vector<int64_t>> to_args_sizes(at::TensorList tensors) {
+inline std::vector<std::vector<int64_t>> to_args_sizes(
+    at::ITensorListRef tensors) {
   std::vector<std::vector<int64_t>> args_sizes(tensors.size());
-  for (const auto i : c10::irange(tensors.size())) {
-    args_sizes[i] = tensors[i].sizes().vec();
+  size_t i = 0;
+  for (const auto& t : tensors) {
+    args_sizes[i++] = t.sizes().vec();
   }
   return args_sizes;
 }
 
 inline std::vector<c10::ScalarType> to_args_scalartypes(
-    at::TensorList tensors) {
+    at::ITensorListRef tensors) {
   std::vector<c10::ScalarType> args_scalartypes(tensors.size());
-  for (const auto i : c10::irange(tensors.size())) {
-    args_scalartypes[i] = tensors[i].scalar_type();
+  size_t i = 0;
+  for (const auto& t : tensors) {
+    args_scalartypes[i++] = t.scalar_type();
   }
   return args_scalartypes;
 }
